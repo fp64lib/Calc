@@ -1,0 +1,211 @@
+#
+# Sieve.d32 - Fast prime detection using Sieve of Eratosthenes 
+# (C) 2023-206 Uwe Bissinger
+#
+# This set of routines takes advantage of the 900 available
+# local registers to implement a several functions to detect
+# whether a number is prime or not.
+#
+# Usage:
+# XEQ I			# Initialize the sieve, must be done before any other function is called
+#				# This takes several minutes!
+#				# If you are impatient, use the savestate file Sieve-full.d32 
+# n XEQ P		# Check whether n is a prime number, returns 0 or 1
+# n XEQ N		# Get the next prime number after n
+#
+# Named register usage:
+# i:			# index
+# J: 999.998	# index of last register used
+# P: 			# number to be checked to be prime
+#
+# Local register usage: 
+# R100-R999:	# the first 900 primes (from 2 to 6997)
+#
+# Global register usage:
+# none
+#
+# Flags used:
+# F0:			# set by program if number to be checked exceeds last saved prime, i.e. is > 7000
+#
+# LBLs used:
+# A-CDEF--I--LMN-P--S-------
+#------------------------------------------------------
+
+# STACK
+
+# REGS
+
+# EREGS
+
+# FLAGS
+
+# SEED
+
+# MODE
+
+# EQUATION LIST
+
+# PROGRAM
+PTR: 0
+PGM
+# ------------------------- XEQ I ---------------------------------------
+# Initialze the sieve
+# Input:	none
+# Output:	SX: 6997 (last prime that fits into 900 local registers)
+# 			SY, SZ, ST, LSTX: contain some working data
+
+  LBL I
+# initialze counters: J for storing the next prime, i for iterating
+  100.998
+  STO J
+  STO i
+# the first two primes 2 & 3 are stored manually
+  2
+  STO\blpar;i\brpar;
+  ISG i
+  3
+  STO\blpar;i\brpar;
+# initialize P with the last checked number: 3
+  STO P
+  RCL i
+  STO J
+  
+# outer loop A: get next number P+2 and check it being prime
+  LBL A
+  2
+  STO+ P
+# check P against all already known primes in R100 - R(J)
+  RCL J
+  IP
+  1E3
+  \div;
+  101
+  +
+  STO i
+
+# inner loop L: check 
+  LBL L
+  RCL P
+  RCL\blpar;i\brpar;
+  x\sqr;
+  x>y?
+# optimization: we only have to check against all numbers <= sqrt(P)
+  GTO M
+  CLx
+  RCL\blpar;i\brpar;
+  \div;
+  FP
+  x=0?
+# if P mod R(i) = 0, P can be divided by R(i) and is not a prime
+  GTO A
+  ISG i
+  GTO L
+
+# Success: P is prime! append it to all currently known primes
+  LBL M
+  1
+  RCL+ J
+  STO i
+  RCL P
+  STO\blpar;i\brpar;
+  ISG J
+  GTO A
+# stop if we used up all local registers
+  RTN
+
+# ------------------------- XEQ P ---------------------------------------
+# Check number on being prime
+# Input:	SX	number P to be checked, must be an integer number > 1
+# Output:	SX: 1 or 0, depending whether P is prime or not
+# 			SY, SZ, ST, LSTX: contain some working data
+  LBL P
+  STO P
+# set flag 0 if p > 7000^2, i.e. we might continue to test manually after testing against the sieve
+  7E3
+  x\sqr;
+  CF 0
+  x<y?
+  SF 0
+  100.999
+  STO i
+
+# loop: check against the sieve
+  LBL C
+  RCL P
+  RCL\blpar;i\brpar;
+  x\sqr;
+  x>y?
+# optimization: we only have to check against all numbers <= sqrt(P)
+  GTO F
+
+  CLx
+  RCL\blpar;i\brpar;
+  \div;
+  FP
+  x=0?
+# if P mod R(i) = 0, P is not a prime, we return 0 (already in SX)
+  RTN
+  ISG i
+  GTO C
+
+# ok, we checked against all numbers in the sieve, do we have to continue manually?
+  FS? 0
+  GTO D
+# Success: P is a prime, return 1
+  LBL F
+  1
+  RTN
+  
+# we checked against all numbers in the sieve, we have to continue manually
+  LBL D
+# 6999+2 is the first number after our last prime to check against
+# N.B. 7001 is a prime ;-)
+  6999
+  STO i
+# manual loop: check against i+2
+  LBL E
+  2
+  STO+ i
+  RCL P
+  RCL i
+  x\sqr;
+  x>y?
+# optimization: we only have to check against all numbers <= sqrt(P)
+  GTO F
+  CLx
+  RCL i
+  \div;
+  FP
+  x\neq;0?
+# loop until P mod i == 0, i.e. P is not prime, or i^2 > P, i.e. P is prime
+  GTO E
+# failure: P is not a prime, return =, already is SX
+  RTN
+  
+# ------------------------- XEQ N ---------------------------------------
+# Find next prime
+# Input:	SX	number n to start with, must be an odd integer > 1
+# Output:	SX: p, the next prime with p > n
+# 			SY, SZ, ST, LSTX: contain some working data
+  LBL N
+# next prime is at least 2 bigger than current one
+  2
+  +
+  
+# ------------------------- XEQ S ---------------------------------------
+# Find next prime, that's the same or bigger
+# Input:	SX	number n to start with, must be an odd integer > 1
+# Output:	SX: p, the next prime with p >= n
+# 			SY, SZ, ST, LSTX: contain some working data
+  LBL S
+  XEQ P
+# is it prime?
+  RCL P
+  +
+  RCL P
+  x\neq;y?
+# if P is prime, then return P (already in SX)
+  RTN
+# otherwise continue the search
+  GTO N
+PGMEND
